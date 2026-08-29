@@ -19,6 +19,7 @@ pub fn run(db_path: &Path, json_out: bool, file: &Path) -> CliResult<()> {
     for it in items {
         let review_item = ReviewItem {
             id: uuid::Uuid::new_v4().to_string(),
+            external_id: it.external_id,
             title: it.title,
             rule_id: it.rule_id,
             rule_text: it.rule_text,

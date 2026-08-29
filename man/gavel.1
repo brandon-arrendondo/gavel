@@ -33,7 +33,16 @@ in the target directory (cwd by default, or
 .B import \fIFILE\fR
 Import review items from a JSON array or JSONL file (one object per line).
 Each object has the shape:
-.IR "{title, rule_id, rule_text?, language, file_path?, start_line, code, context?}" .
+.IR "{external_id?, title, rule_id, rule_text?, language, file_path?, start_line, code, context?}" .
+.I external_id
+is an optional caller-supplied id, opaque to gavel, echoed back verbatim
+on
+.B export
+so a caller can join an exported verdict back to its own row (e.g. a row
+in the caller's own tracking table) without depending on import order
+surviving a review session. It is not used for
+.B show / review \-\-id
+resolution \(em that's what the internal uuid (or its prefix) is for.
 Every imported item starts with status
 .IR pending .
 Prints the count imported.
@@ -47,6 +56,9 @@ filters to
 .B show \fIID\fR
 Print full detail for one item: the code snippet with real line numbers,
 rule text, context, any line comments, and the verdict if adjudicated.
+Also prints
+.I external_id
+if the item was imported with one.
 .I ID
 accepts a full uuid or an unambiguous prefix (the short id shown by
 .BR list ).
@@ -70,9 +82,13 @@ See
 below.
 .TP
 .B export \fR[\fB\-\-status\fR \fISTATUS\fR] [\fB\-o\fR \fIFILE\fR]
-Export items as a JSON array, each carrying its verdict (or
+Export items as a JSON array, each carrying its
+.I external_id
+(or
 .I null
-if none) and its line comments.
+if none was given on import), its verdict (or
+.I null
+if none), and its line comments.
 .B \-\-status
 filters to
 .IR pending | in_review | adjudicated | all

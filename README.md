@@ -46,7 +46,9 @@ Every command accepts `--db PATH` to point at a specific database file,
 overriding the usual lookup (`--db` flag → `$GAVEL_DB` → walk up from cwd
 looking for `.gavel/gavel.db` → error).
 
-Full reference: `man gavel` (see `man/gavel.1`).
+Full reference: `man gavel` (see `man/gavel.1`). For architecture, the
+full data model, and a guide for integrating an agent/consumer against
+gavel, see [`docs/`](docs/).
 
 ## Import / export JSON shape
 
@@ -54,6 +56,7 @@ Import accepts a JSON array or JSONL (one object per line) of:
 
 ```json
 {
+  "external_id": "gt-42",
   "title": "Pointer arithmetic past array bound in checksum loop",
   "rule_id": "ARR30-C",
   "rule_text": "Do not form or use out-of-bounds pointers or array subscripts",
@@ -65,14 +68,31 @@ Import accepts a JSON array or JSONL (one object per line) of:
 }
 ```
 
-`rule_text`, `file_path`, and `context` are optional. Every imported item
-starts life with status `pending`.
+`external_id`, `rule_text`, `file_path`, and `context` are optional. Every
+imported item starts life with status `pending`.
+
+`external_id` is a caller-supplied id (e.g. a row key in a caller's own
+tracking table) that gavel never interprets — it's opaque, and separate
+from gavel's own internal uuid (used for `list`/`show`/`review --id`
+resolution). It exists purely so a caller can join an exported verdict back
+to its own row once items may have been reviewed out of order in the TUI.
+It's echoed back verbatim on export, or `null` if the item was imported
+without one.
 
 Export produces a JSON array where each item additionally carries its
 `status`, `verdict` (`{decision, rationale, reviewer, reviewed_at}` or
 `null`), and `line_comments` (`[{line_number, comment, created_at}, ...]`).
 By default only `adjudicated` items are exported — pass `--status all` (or
 `pending` / `in_review`) to see others.
+
+`verdict.decision` is one of `compliant`, `violation`, `false_positive`,
+`needs_more_context`, `uncertain`. Consumers with a narrower vocabulary of
+their own don't have to use all five — for example, a ground-truth
+workflow tracking `TP` / `FP` / `uncertain` might map
+`violation → TP`, `false_positive → FP`, `uncertain → uncertain`, and
+simply never produce `compliant` or `needs_more_context`. See
+[`docs/data-model.md`](docs/data-model.md#decision-vocabulary-and-common-consumer-mappings)
+for more on this mapping.
 
 ## The review TUI
 

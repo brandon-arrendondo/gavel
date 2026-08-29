@@ -6,21 +6,22 @@ use serde::Serialize;
 
 use crate::error::{system, user, CliResult};
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE review_items (
-    id         TEXT PRIMARY KEY,
-    title      TEXT NOT NULL,
-    rule_id    TEXT NOT NULL,
-    rule_text  TEXT,
-    language   TEXT NOT NULL,
-    file_path  TEXT,
-    start_line INTEGER NOT NULL,
-    code       TEXT NOT NULL,
-    context    TEXT,
-    status     TEXT NOT NULL CHECK(status IN ('pending','in_review','adjudicated')),
-    created_at TEXT NOT NULL
+    id          TEXT PRIMARY KEY,
+    external_id TEXT,
+    title       TEXT NOT NULL,
+    rule_id     TEXT NOT NULL,
+    rule_text   TEXT,
+    language    TEXT NOT NULL,
+    file_path   TEXT,
+    start_line  INTEGER NOT NULL,
+    code        TEXT NOT NULL,
+    context     TEXT,
+    status      TEXT NOT NULL CHECK(status IN ('pending','in_review','adjudicated')),
+    created_at  TEXT NOT NULL
 );
 
 CREATE TABLE line_comments (
@@ -45,12 +46,14 @@ CREATE TABLE meta (
 );
 
 CREATE INDEX idx_review_items_status ON review_items(status, created_at);
+CREATE INDEX idx_review_items_external_id ON review_items(external_id);
 CREATE INDEX idx_line_comments_item ON line_comments(item_id, line_number);
 "#;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReviewItem {
     pub id: String,
+    pub external_id: Option<String>,
     pub title: String,
     pub rule_id: String,
     pub rule_text: Option<String>,
@@ -95,12 +98,12 @@ pub fn open(path: &Path) -> CliResult<Connection> {
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(|e| system(format!("pragma foreign_keys failed: {e}")))?;
     if is_initialized(&conn) {
-        check_schema_version(&conn)?;
+        migrate(&conn)?;
     }
     Ok(conn)
 }
 
-fn check_schema_version(conn: &Connection) -> CliResult<()> {
+fn read_schema_version(conn: &Connection) -> CliResult<i64> {
     let v: Option<String> = conn
         .query_row(
             "SELECT value FROM meta WHERE key = 'schema_version'",
@@ -109,17 +112,46 @@ fn check_schema_version(conn: &Connection) -> CliResult<()> {
         )
         .optional()
         .map_err(|e| system(format!("meta read failed: {e}")))?;
-    let current: i64 = match v {
+    match v {
         Some(s) => s
             .parse()
-            .map_err(|e| system(format!("schema_version parse failed: {e}")))?,
-        None => 1,
-    };
+            .map_err(|e| system(format!("schema_version parse failed: {e}"))),
+        None => Ok(1),
+    }
+}
+
+fn migrate(conn: &Connection) -> CliResult<()> {
+    let current = read_schema_version(conn)?;
+    if current == SCHEMA_VERSION {
+        return Ok(());
+    }
     if current > SCHEMA_VERSION {
         return Err(system(format!(
             "database schema version {current} is newer than this binary supports ({SCHEMA_VERSION}); upgrade gavel"
         )));
     }
+    if current <= 1 {
+        migrate_v1_to_v2(conn)?;
+    }
+    Ok(())
+}
+
+/// Add the nullable `external_id` column so callers can round-trip their own
+/// row key (e.g. a `ground_truth.gt_id`) through import -> export without
+/// relying on import order surviving a review session. A plain
+/// `ALTER TABLE ... ADD COLUMN` is sufficient here (unlike a CHECK-constraint
+/// change) since SQLite supports adding nullable columns in place.
+fn migrate_v1_to_v2(conn: &Connection) -> CliResult<()> {
+    conn.execute_batch(
+        r#"
+        BEGIN;
+        ALTER TABLE review_items ADD COLUMN external_id TEXT;
+        CREATE INDEX IF NOT EXISTS idx_review_items_external_id ON review_items(external_id);
+        UPDATE meta SET value = '2' WHERE key = 'schema_version';
+        COMMIT;
+        "#,
+    )
+    .map_err(|e| system(format!("v1->v2 migration failed: {e}")))?;
     Ok(())
 }
 
@@ -154,31 +186,33 @@ pub fn require_initialized(conn: &Connection) -> CliResult<()> {
 }
 
 pub const ITEM_COLUMNS: &str =
-    "id, title, rule_id, rule_text, language, file_path, start_line, code, context, status, created_at";
+    "id, external_id, title, rule_id, rule_text, language, file_path, start_line, code, context, status, created_at";
 
 pub fn row_to_item(row: &Row) -> rusqlite::Result<ReviewItem> {
     Ok(ReviewItem {
         id: row.get(0)?,
-        title: row.get(1)?,
-        rule_id: row.get(2)?,
-        rule_text: row.get(3)?,
-        language: row.get(4)?,
-        file_path: row.get(5)?,
-        start_line: row.get(6)?,
-        code: row.get(7)?,
-        context: row.get(8)?,
-        status: row.get(9)?,
-        created_at: row.get(10)?,
+        external_id: row.get(1)?,
+        title: row.get(2)?,
+        rule_id: row.get(3)?,
+        rule_text: row.get(4)?,
+        language: row.get(5)?,
+        file_path: row.get(6)?,
+        start_line: row.get(7)?,
+        code: row.get(8)?,
+        context: row.get(9)?,
+        status: row.get(10)?,
+        created_at: row.get(11)?,
     })
 }
 
 pub fn insert_item(conn: &Connection, item: &ReviewItem) -> CliResult<()> {
     conn.execute(
         &format!(
-            "INSERT INTO review_items({ITEM_COLUMNS}) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"
+            "INSERT INTO review_items({ITEM_COLUMNS}) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)"
         ),
         params![
             item.id,
+            item.external_id,
             item.title,
             item.rule_id,
             item.rule_text,

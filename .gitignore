@@ -8,3 +8,4 @@ THIRD_PARTY_LICENSES.txt
 *.cdx.json
 __pycache__/
 *.pyc
+.todo-sqlite-cli

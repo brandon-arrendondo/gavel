@@ -28,14 +28,17 @@ patterns were copied intentionally, not reinvented.
 | `mcp_server/` | Python FastMCP server wrapping the binary (`import_items`, `list_items`, `show_item`, `stats`, `export_items`) |
 | `examples/sample-items.jsonl` | 4 realistic sample findings (ARR30-C, EXP34-C, MEM31-C, STR31-C) for trying the pipeline end to end |
 | `man/gavel.1` | Man page — the canonical command reference; keep in sync with `cli.rs` doc comments |
+| `docs/` | Deeper reference docs for external readers: `architecture.md` (module map, TUI structure, the blind-review guarantee), `data-model.md` (schema, status lifecycle, decision vocab), `integration-guide.md` (how a consumer/agent should use gavel end to end) |
 | `tasks.py` | invoke tasks: `build`, `test`, `lint`, `fmt`, `check`, `bump-version` |
 
 ## Data model
 
-Three tables, no migrations yet (schema v1 — see `db::SCHEMA_VERSION`; if
-you add a breaking change, follow todo-sqlite-cli's `migrate_vN_to_vN1`
-pattern of copy-via-new-table rather than editing `SCHEMA_SQL` in place for
-existing databases).
+Three tables. Schema v2 as of the `external_id` column (see
+`db::SCHEMA_VERSION` and `db::migrate_v1_to_v2` in `src/db.rs`) — a plain
+`ALTER TABLE ADD COLUMN` was sufficient there since it's an additive
+nullable column, not a `CHECK`-constraint change. For a breaking change,
+follow todo-sqlite-cli's `migrate_vN_to_vN1` pattern of copy-via-new-table
+instead of editing `SCHEMA_SQL` in place for existing databases.
 
 - **`review_items`** — one row per flagged snippet. `id` is a uuid v4
   (primary key — there is no separate integer display id like
@@ -43,7 +46,10 @@ existing databases).
   either the full uuid or an unambiguous prefix via `id LIKE 'prefix%'` in
   `db::resolve_one`). `status` is `pending` → `in_review` → `adjudicated`,
   driven entirely by the `review` TUI (opening an item flips
-  `pending`→`in_review`; saving a verdict flips to `adjudicated`).
+  `pending`→`in_review`; saving a verdict flips to `adjudicated`). Also
+  carries `external_id` (nullable) — a caller-supplied id echoed verbatim
+  on export, never interpreted or used for lookups by gavel itself; that's
+  what `id`/`resolve_one` are for.
 - **`line_comments`** — many per item, `line_number` is 1-indexed and
   **relative to the snippet**, not the original file (`start_line` is the
   original file's line 1 offset, used only for display in `show`/`review`).
@@ -96,6 +102,17 @@ points if you're extending it:
   the original build brief this repo was built from, if you're looking for
   it, it's not persisted anywhere in-repo — this file and the man page are
   the record of what "MVP" was scoped to mean).
+- **Blind review is an intentional design guarantee, not an oversight.**
+  The schema has no slot for a "prior verdict" or "reference verdict" on a
+  `review_item` — this is deliberate. At least one downstream consumer
+  (measuring agreement between a fresh human verdict and an existing
+  ground-truth verdict) depends on gavel never surfacing that existing
+  verdict during review; if it were visible, the measurement would be
+  meaningless. If you ever add a field like that (e.g. to support a
+  different consumer's workflow), it **must** default to not rendering in
+  `review.rs` — gate it behind an explicit opt-in flag/command, never show
+  it unconditionally in the TUI. Don't remove this note without checking
+  whether that guarantee is still relied upon.
 
 ## Testing
 

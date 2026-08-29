@@ -41,8 +41,13 @@ def import_items(items: list[dict[str, Any]]) -> str:
     """Import a batch of review items. Returns a confirmation JSON string.
 
     Each item has the shape:
-      {title, rule_id, rule_text?, language, file_path?, start_line, code, context?}
+      {external_id?, title, rule_id, rule_text?, language, file_path?, start_line, code, context?}
 
+    - external_id: optional caller-supplied id (e.g. a row key in your own
+      tracking table), opaque to gavel, echoed back verbatim by export_items
+      and show_item. Use this — not gavel's internal id — to join a verdict
+      back to your own record once items may have been reviewed out of
+      order in the TUI.
     - title: short human-readable summary of what's being reviewed
     - rule_id: CERT-C rule identifier, e.g. "EXP34-C"
     - rule_text: optional rule name/description
@@ -52,7 +57,9 @@ def import_items(items: list[dict[str, Any]]) -> str:
     - code: the snippet itself, multi-line
     - context: optional freeform markdown — why this was flagged, what to focus on
 
-    Every imported item starts with status "pending".
+    Every imported item starts with status "pending". Items are passed as a
+    Python list of dicts (this function serializes them to JSON itself) —
+    there's no need to hand-write a JSONL file for programmatic callers.
     """
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
@@ -77,7 +84,8 @@ def list_items(status: str | None = None) -> str:
 
     status: filter by pending | in_review | adjudicated (omit for all).
 
-    Returns {"items": [{"id", "title", "rule_id", "status"}, ...]}.
+    Returns {"items": [{"id", "external_id", "title", "rule_id", "status"}, ...]}.
+    "external_id" is null for items imported without one.
     """
     args = ["list", "--json"]
     if status:
@@ -88,7 +96,8 @@ def list_items(status: str | None = None) -> str:
 @mcp.tool()
 def show_item(id: str) -> str:
     """Show full detail for one item as JSON: snippet, rule, context,
-    line comments, and verdict (or null if not yet adjudicated).
+    line comments, external_id (null if none), and verdict (or null if not
+    yet adjudicated).
 
     id: full item id or an unambiguous short-id prefix (as shown by list_items).
     """
@@ -115,8 +124,11 @@ def export_items(status: str = "adjudicated") -> str:
         session).
 
     Returns the JSON array as a string (parse it to get a list of objects
-    shaped {id, title, rule_id, rule_text, language, file_path, start_line,
-    code, context, status, verdict, line_comments}).
+    shaped {id, external_id, title, rule_id, rule_text, language, file_path,
+    start_line, code, context, status, verdict, line_comments}).
+    external_id is the caller-supplied id from import_items, echoed back
+    verbatim (null if the item was imported without one) — use it to join
+    a verdict back to your own record.
     """
     return _run("export", "--status", status)
 

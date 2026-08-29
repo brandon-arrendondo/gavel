@@ -8,6 +8,13 @@ use crate::db::{LineComment, ReviewItem, Verdict};
 /// (one object per line), both work.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ImportItem {
+    /// Caller-supplied id (e.g. a row key in the caller's own tracking
+    /// table) that is echoed back verbatim on `ExportItem::external_id`.
+    /// Opaque to gavel — never used for id resolution or display; use the
+    /// internal uuid (or its prefix) for that, as `list`/`show`/`review
+    /// --id` already do.
+    #[serde(default)]
+    pub external_id: Option<String>,
     pub title: String,
     pub rule_id: String,
     #[serde(default)]
@@ -61,6 +68,9 @@ impl From<LineComment> for LineCommentOut {
 #[derive(Debug, Clone, Serialize)]
 pub struct ExportItem {
     pub id: String,
+    /// Echoed verbatim from the imported item's `external_id`; `null` if
+    /// the item was imported without one.
+    pub external_id: Option<String>,
     pub title: String,
     pub rule_id: String,
     pub rule_text: Option<String>,
@@ -82,6 +92,7 @@ impl ExportItem {
     ) -> Self {
         ExportItem {
             id: item.id,
+            external_id: item.external_id,
             title: item.title,
             rule_id: item.rule_id,
             rule_text: item.rule_text,

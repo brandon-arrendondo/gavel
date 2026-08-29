@@ -26,6 +26,7 @@ pub fn run(db_path: &Path, json_out: bool, status: Option<&str>) -> CliResult<()
             .map(|it| {
                 json!({
                     "id": it.id,
+                    "external_id": it.external_id,
                     "title": it.title,
                     "rule_id": it.rule_id,
                     "status": it.status,

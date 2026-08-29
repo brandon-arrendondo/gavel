@@ -20,6 +20,9 @@ pub fn run(db_path: &Path, json_out: bool, id: &str) -> CliResult<()> {
 
     println!("{}", item.title);
     println!("id:       {}", item.id);
+    if let Some(ext) = &item.external_id {
+        println!("external: {ext}");
+    }
     println!("rule:     {}", item.rule_id);
     if let Some(rt) = &item.rule_text {
         println!("rule_text: {rt}");
