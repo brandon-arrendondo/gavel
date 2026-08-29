@@ -1,0 +1,213 @@
+.TH GAVEL 1 "2026-08-29" "gavel 0.1.0" "User Commands"
+.SH NAME
+gavel \- human review workstation for AI-flagged CERT-C findings
+.SH SYNOPSIS
+.B gavel
+[\fB\-\-db\fR \fIPATH\fR]
+[\fB\-\-json\fR]
+.I COMMAND
+[\fIARGS\fR...]
+.SH DESCRIPTION
+.B gavel
+is a terminal review workstation for adjudicating secure-coding findings
+that an AI agent (Claude) flagged against CERT-C rules in C/C++ source.
+An agent produces a batch of review items as JSON; a human imports them,
+works through each one in a ratatui terminal UI, and exports adjudicated
+verdicts back out as JSON for the agent to consume.
+.PP
+Every command supports
+.B \-\-json
+for machine-readable output (where applicable) and
+.B \-\-db
+.I PATH
+to override database resolution.
+.SH COMMANDS
+.TP
+.B init
+Initialize a new database at
+.I .gavel/gavel.db
+in the target directory (cwd by default, or
+.B \-\-dir
+.IR PATH ).
+.TP
+.B import \fIFILE\fR
+Import review items from a JSON array or JSONL file (one object per line).
+Each object has the shape:
+.IR "{title, rule_id, rule_text?, language, file_path?, start_line, code, context?}" .
+Every imported item starts with status
+.IR pending .
+Prints the count imported.
+.TP
+.B list \fR[\fB\-\-status\fR \fISTATUS\fR]
+List review items as a table: short id, rule id, title, status.
+.B \-\-status
+filters to
+.IR pending | in_review | adjudicated .
+.TP
+.B show \fIID\fR
+Print full detail for one item: the code snippet with real line numbers,
+rule text, context, any line comments, and the verdict if adjudicated.
+.I ID
+accepts a full uuid or an unambiguous prefix (the short id shown by
+.BR list ).
+Non-interactive.
+.TP
+.B review \fR[\fB\-\-id\fR \fIID\fR] [\fB\-\-reviewer\fR \fINAME\fR]
+Launch the interactive TUI. With no
+.BR \-\-id ,
+works through every
+.I pending
+/
+.I in_review
+item as a queue, in import order. With
+.BR \-\-id ,
+opens that one item directly regardless of its status.
+.B \-\-reviewer
+records a name on saved verdicts (defaults to
+.BR $USER ).
+See
+.B KEYBINDINGS
+below.
+.TP
+.B export \fR[\fB\-\-status\fR \fISTATUS\fR] [\fB\-o\fR \fIFILE\fR]
+Export items as a JSON array, each carrying its verdict (or
+.I null
+if none) and its line comments.
+.B \-\-status
+filters to
+.IR pending | in_review | adjudicated | all
+(default
+.IR adjudicated ,
+since that's what an agent typically wants back).
+.B \-o
+writes to a file instead of stdout.
+.TP
+.B stats
+Print counts of items by status and of verdicts by decision.
+.SH KEYBINDINGS (review TUI)
+.TP
+.B j / k / \(dnarrow / \(uparrow
+Move the selected line up/down in the code pane.
+.TP
+.B c
+Add a comment on the currently selected line. Type the comment text,
+.B Enter
+to save,
+.B Esc
+to cancel.
+.TP
+.B 1
+Set verdict: compliant.
+.TP
+.B 2
+Set verdict: violation.
+.TP
+.B 3
+Set verdict: false_positive.
+.TP
+.B 4
+Set verdict: needs_more_context.
+.TP
+.B 5
+Set verdict: uncertain.
+.PP
+After pressing a verdict key, type an optional rationale/notes,
+.B Enter
+to save the verdict and automatically advance to the next item in the
+queue (or exit the TUI if it was the last one),
+.B Esc
+to cancel and stay on the current item.
+.TP
+.B n
+Skip to the next item without recording a verdict.
+.TP
+.B p
+Go back to the previous item.
+.TP
+.B PageUp / PageDown
+Scroll the rule/context pane.
+.TP
+.B q
+Quit. All comments and verdicts are already persisted to the database as
+they're entered, so there is nothing to "save" on quit — items left
+without a verdict simply remain
+.I in_review
+for the next
+.B gavel review
+session.
+.SH ITEM STATUSES
+.TP
+.B pending
+Freshly imported, not yet opened for review.
+.TP
+.B in_review
+Opened in the TUI at least once but not yet adjudicated.
+.TP
+.B adjudicated
+A verdict has been recorded.
+.SH VERDICT DECISIONS
+.B compliant, violation, false_positive, needs_more_context, uncertain.
+.SH DATABASE RESOLUTION
+.IP 1. 4
+The
+.B \-\-db
+.I PATH
+flag.
+.IP 2. 4
+The
+.B GAVEL_DB
+environment variable.
+.IP 3. 4
+A walk up from the current directory looking for a
+.I .gavel/gavel.db
+file (like git finds
+.IR .git ).
+.IP 4. 4
+Otherwise the command exits with status 1 and a hint pointing at
+.BR "gavel init" .
+.SH ENVIRONMENT
+.TP
+.B GAVEL_DB
+If set, used as the database path when no
+.B \-\-db
+flag is supplied.
+.SH EXAMPLES
+Initialize and import a batch of findings, then review them:
+.RS
+.nf
+gavel init
+gavel import findings.jsonl
+gavel review
+.fi
+.RE
+.PP
+Check progress and export what's been decided so far:
+.RS
+.nf
+gavel stats
+gavel export --status adjudicated -o verdicts.json
+.fi
+.RE
+.PP
+Jump straight to one item by its short id (as shown by
+.BR list ):
+.RS
+.nf
+gavel show a1b2c3d4
+gavel review --id a1b2c3d4
+.fi
+.RE
+.SH EXIT CODES
+.TP
+.B 0
+Success.
+.TP
+.B 1
+User error: bad input, missing database, item not found.
+.TP
+.B 2
+System error: unwritable path, corrupt database.
+.SH AUTHORS
+Brandon Arrendondo <brandon.arrendondo@bissell.com>
+.SH SEE ALSO
+.BR sqlite3 (1)

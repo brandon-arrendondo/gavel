@@ -1,0 +1,10 @@
+/target
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.gavel/
+THIRD_PARTY_LICENSES.txt
+*.cdx.json
+__pycache__/
+*.pyc

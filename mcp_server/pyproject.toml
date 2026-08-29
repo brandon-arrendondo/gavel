@@ -1,0 +1,11 @@
+[project]
+name = "gavel-mcp"
+version = "0.1.0"
+description = "MCP server wrapping gavel"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+gavel-mcp-server = "server:main"
