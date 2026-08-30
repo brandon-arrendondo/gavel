@@ -458,9 +458,18 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
             Style::default().fg(Color::Cyan),
         )));
     }
+    // Keep the tail of the pane visible — in particular the blank spacer +
+    // input line pushed on above, which is otherwise the first thing to
+    // scroll out of view once there are enough existing comments to fill
+    // the pane on their own (no scroll was applied here at all before,
+    // so the input line silently became invisible while still accepting
+    // keystrokes).
+    let bottom_visible_height = outer[2].height.saturating_sub(2) as usize;
+    let bottom_scroll = (lines.len().saturating_sub(bottom_visible_height)) as u16;
     let comments = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(bottom_title))
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((bottom_scroll, 0));
     f.render_widget(comments, outer[2]);
 
     // Help / status bar
