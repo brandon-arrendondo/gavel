@@ -214,16 +214,24 @@ fn handle_normal_key(conn: &Connection, app: &mut App, code: KeyCode) -> CliResu
     match code {
         KeyCode::Char('q') => app.should_quit = true,
         KeyCode::Char('j') | KeyCode::Down => {
+            app.message.clear();
             let max = code_line_count(app).saturating_sub(1);
             if app.selected_line < max {
                 app.selected_line += 1;
             }
         }
         KeyCode::Char('k') | KeyCode::Up => {
+            app.message.clear();
             app.selected_line = app.selected_line.saturating_sub(1);
         }
-        KeyCode::PageDown => app.context_scroll = app.context_scroll.saturating_add(5),
-        KeyCode::PageUp => app.context_scroll = app.context_scroll.saturating_sub(5),
+        KeyCode::PageDown => {
+            app.message.clear();
+            app.context_scroll = app.context_scroll.saturating_add(5);
+        }
+        KeyCode::PageUp => {
+            app.message.clear();
+            app.context_scroll = app.context_scroll.saturating_sub(5);
+        }
         KeyCode::Char('c') => {
             app.mode = Mode::Comment;
             app.input.clear();
