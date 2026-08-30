@@ -47,7 +47,8 @@ pub fn run(db_path: &Path, json_out: bool, id: &str) -> CliResult<()> {
         println!();
         println!("--- comments ---");
         for c in &comments {
-            println!("  line {}: {}", c.line_number, c.comment);
+            let file_line = item.start_line + c.line_number - 1;
+            println!("  line {file_line}: {}", c.comment);
         }
     }
     if let Some(v) = &verdict {

@@ -268,9 +268,10 @@ fn handle_comment_key(conn: &Connection, app: &mut App, code: KeyCode) -> CliRes
             if !app.input.trim().is_empty() {
                 let item_id = app.items[app.idx].id.clone();
                 let line_number = app.selected_line as i64 + 1;
+                let file_line = app.items[app.idx].start_line + app.selected_line as i64;
                 db::add_comment(conn, &item_id, line_number, app.input.trim())?;
                 load_comments(conn, app)?;
-                app.message = format!("comment added on line {line_number}");
+                app.message = format!("comment added on line {file_line}");
             }
             app.mode = Mode::Normal;
             app.input.clear();
@@ -442,7 +443,10 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
     let mut lines: Vec<Line> = app
         .comments
         .iter()
-        .map(|c| Line::from(format!("  line {}: {}", c.line_number, c.comment)))
+        .map(|c| {
+            let file_line = item.start_line + c.line_number - 1;
+            Line::from(format!("  line {file_line}: {}", c.comment))
+        })
         .collect();
     if lines.is_empty() && app.mode == Mode::Normal {
         lines.push(Line::from("  (none yet)"));
