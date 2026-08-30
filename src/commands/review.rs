@@ -39,6 +39,7 @@ struct App {
     items: Vec<ReviewItem>,
     idx: usize,
     selected_line: usize,
+    code_scroll: usize,
     context_scroll: u16,
     mode: Mode,
     input: String,
@@ -46,6 +47,30 @@ struct App {
     comments: Vec<LineComment>,
     reviewer: Option<String>,
     should_quit: bool,
+}
+
+/// Expand tabs to spaces at fixed tab stops. Without this, a source line's
+/// on-screen width as the terminal actually renders it (which expands tabs
+/// to the next stop) diverges from what ratatui's buffer thinks the line's
+/// width is (it counts a tab as a single cell) — so when the following
+/// frame's content is shorter, ratatui only clears cells up to where it
+/// believes the line ended, leaving the terminal's wider previous rendering
+/// visible past that point. CERT-C source is tab-indented often enough that
+/// this shows up as soon as line 1.
+fn expand_tabs(s: &str, tab_width: usize) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut col = 0usize;
+    for ch in s.chars() {
+        if ch == '\t' {
+            let spaces = tab_width - (col % tab_width);
+            out.push_str(&" ".repeat(spaces));
+            col += spaces;
+        } else {
+            out.push(ch);
+            col += 1;
+        }
+    }
+    out
 }
 
 pub fn run(db_path: &Path, id: Option<&str>, reviewer: Option<&str>) -> CliResult<()> {
@@ -75,6 +100,7 @@ pub fn run(db_path: &Path, id: Option<&str>, reviewer: Option<&str>) -> CliResul
         items,
         idx: 0,
         selected_line: 0,
+        code_scroll: 0,
         context_scroll: 0,
         mode: Mode::Normal,
         input: String::new(),
@@ -132,6 +158,7 @@ fn goto(conn: &Connection, app: &mut App, new_idx: usize) -> CliResult<()> {
     }
     app.idx = new_idx;
     app.selected_line = 0;
+    app.code_scroll = 0;
     app.context_scroll = 0;
     app.mode = Mode::Normal;
     app.input.clear();
@@ -270,7 +297,7 @@ fn handle_rationale_key(
     Ok(())
 }
 
-fn draw(f: &mut ratatui::Frame, app: &App) {
+fn draw(f: &mut ratatui::Frame, app: &mut App) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -318,9 +345,28 @@ fn draw(f: &mut ratatui::Frame, app: &App) {
             } else {
                 Style::default()
             };
-            Line::from(Span::styled(format!("{lineno:>6} | {l}"), style))
+            let expanded = expand_tabs(l, 8);
+            Line::from(Span::styled(format!("{lineno:>6} | {expanded}"), style))
         })
         .collect();
+
+    // Keep the selected line in view. No wrapping on this pane (below) so
+    // one logical source line is always exactly one screen row, which is
+    // what makes a plain line-count scroll offset correct here.
+    let visible_height = main[0].height.saturating_sub(2) as usize;
+    let total_lines = code_lines.len();
+    if visible_height > 0 {
+        if app.selected_line < app.code_scroll {
+            app.code_scroll = app.selected_line;
+        } else if app.selected_line >= app.code_scroll + visible_height {
+            app.code_scroll = app.selected_line + 1 - visible_height;
+        }
+        let max_scroll = total_lines.saturating_sub(visible_height);
+        if app.code_scroll > max_scroll {
+            app.code_scroll = max_scroll;
+        }
+    }
+
     let code = Paragraph::new(code_lines)
         .block(
             Block::default().borders(Borders::ALL).title(
@@ -329,15 +375,18 @@ fn draw(f: &mut ratatui::Frame, app: &App) {
                     .unwrap_or_else(|| item.language.clone()),
             ),
         )
-        .wrap(Wrap { trim: false });
+        .scroll((app.code_scroll as u16, 0));
     f.render_widget(code, main[0]);
 
     let mut context_text = String::new();
     if let Some(rt) = &item.rule_text {
-        context_text.push_str(rt);
+        context_text.push_str(&expand_tabs(rt, 8));
         context_text.push_str("\n\n");
     }
-    context_text.push_str(item.context.as_deref().unwrap_or("(no context provided)"));
+    context_text.push_str(&expand_tabs(
+        item.context.as_deref().unwrap_or("(no context provided)"),
+        8,
+    ));
     let context = Paragraph::new(context_text)
         .block(
             Block::default()
@@ -381,7 +430,12 @@ fn draw(f: &mut ratatui::Frame, app: &App) {
 
     // Help / status bar
     let help = if app.message.is_empty() {
-        "j/k move  c comment  1-5 verdict (compliant/violation/false_positive/needs_more_context/uncertain)  n skip  p prev  q quit".to_string()
+        let decisions: String = DECISION_KEYS
+            .iter()
+            .map(|(k, d)| format!("{k} {d}"))
+            .collect::<Vec<_>>()
+            .join("  ");
+        format!("j/k move  c comment  {decisions}  n skip  p prev  q quit")
     } else {
         app.message.clone()
     };
