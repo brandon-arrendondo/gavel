@@ -49,6 +49,17 @@ struct App {
     should_quit: bool,
 }
 
+/// Resolve `file_path` to an absolute, symlink-resolved path suitable for
+/// copy/pasting into a shell or editor. Falls back to the stored path
+/// as-is if it can't be canonicalized (e.g. gavel is running somewhere
+/// other than the checkout the finding was generated from).
+fn display_file_path(file_path: &str) -> String {
+    std::fs::canonicalize(file_path)
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| file_path.to_string())
+}
+
 /// Expand tabs to spaces at fixed tab stops. Without this, a source line's
 /// on-screen width as the terminal actually renders it (which expands tabs
 /// to the next stop) diverges from what ratatui's buffer thinks the line's
@@ -301,7 +312,7 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Min(10),
             Constraint::Length(7),
             Constraint::Length(1),
@@ -310,21 +321,33 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
 
     let item = &app.items[app.idx];
 
-    // Header
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(
-            item.title.clone(),
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
-        Span::styled(item.rule_id.clone(), Style::default().fg(Color::Yellow)),
-        Span::raw(format!(
-            "   item {} of {}   [{}]",
-            app.idx + 1,
-            app.items.len(),
-            item.status
+    // Header — line 1 is title/rule/progress, line 2 is the file path
+    // (full, canonicalized where possible) on its own plain line so it can
+    // be selected/copied whole regardless of terminal width.
+    let path_line = match &item.file_path {
+        Some(fp) => format!("path: {}:{}", display_file_path(fp), item.start_line),
+        None => "path: (no file_path recorded on import)".to_string(),
+    };
+    let header = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(
+                item.title.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  "),
+            Span::styled(item.rule_id.clone(), Style::default().fg(Color::Yellow)),
+            Span::raw(format!(
+                "   item {} of {}   [{}]",
+                app.idx + 1,
+                app.items.len(),
+                item.status
+            )),
+        ]),
+        Line::from(Span::styled(
+            path_line,
+            Style::default().fg(Color::DarkGray),
         )),
-    ]))
+    ])
     .block(Block::default().borders(Borders::ALL).title("gavel review"));
     f.render_widget(header, outer[0]);
 

@@ -99,8 +99,10 @@ for more on this mapping.
 `gavel review` works through every `pending`/`in_review` item as a queue (in
 import order), or opens a single item directly with `--id`.
 
-Layout: header (title, rule, progress) — code snippet with real line numbers
-on the left, rule text + context on the right — line comments and an input
+Layout: header (title, rule, progress, and the item's full file path —
+canonicalized and with `:line` appended where possible, on its own line so
+it's easy to select/copy whole) — code snippet with real line numbers on
+the left, rule text + context on the right — line comments and an input
 line along the bottom — a keybinding bar at the very bottom. No syntax
 highlighting; this is a plain-monospace MVP built for working through a
 stack of ~150 snippets quickly, not for pretty rendering.
