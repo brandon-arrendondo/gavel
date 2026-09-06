@@ -53,6 +53,25 @@ don't produce the values you don't need. See
 [`data-model.md`](data-model.md#decision-vocabulary-and-common-consumer-mappings)
 for one observed mapping (a `TP`/`FP`/`uncertain` ground-truth workflow).
 
+Don't stop at mapping on the way *out*, though — also narrow what
+`gavel review` offers on the way *in*, with `gavel import --decisions
+<LIST>`:
+
+```
+gavel import findings.jsonl --decisions violation,false_positive,uncertain
+```
+
+Without this, a reviewer can (and, in practice, will) pick `compliant` or
+`needs_more_context` meaning "no issue here" when your mapping only has
+`false_positive` for that — the export then has a decision your import
+script has no mapping for, which it's right to skip rather than guess at,
+but every skip is a wasted round-trip. `--decisions` fixes this at the
+source: it restricts the TUI's numbered decision keys to exactly the values
+in your mapping, in the order given, so a value you have no use for is never
+offered as a button in the first place. It persists for the whole database
+(`meta.allowed_decisions`) until a later import passes a different list, so
+you only need to pass it once per review session.
+
 ## What gavel does *not* give you: no reference verdict during review
 
 If your use case involves comparing a fresh human verdict against an

@@ -35,7 +35,7 @@ gavel export --status adjudicated -o verdicts.json
 | Command | Purpose |
 |---|---|
 | `gavel init [--dir PATH]` | Create `.gavel/gavel.db` in the target directory (cwd by default) |
-| `gavel import <FILE>` | Load review items from a JSON array or JSONL file |
+| `gavel import <FILE> [--decisions LIST]` | Load review items from a JSON array or JSONL file |
 | `gavel list [--status S]` | Table of id / rule / title / status |
 | `gavel show <ID>` | Full detail for one item — snippet, rule, context, comments, verdict |
 | `gavel review [--id ID] [--reviewer NAME]` | Launch the TUI |
@@ -93,6 +93,16 @@ workflow tracking `TP` / `FP` / `uncertain` might map
 simply never produce `compliant` or `needs_more_context`. See
 [`docs/data-model.md`](docs/data-model.md#decision-vocabulary-and-common-consumer-mappings)
 for more on this mapping.
+
+If your export mapping doesn't use all five decisions, don't just map on
+the way out — restrict what `review` offers on the way in, with
+`gavel import FILE --decisions violation,false_positive,uncertain` (order
+is preserved as the TUI's numbered keys). Otherwise a reviewer has no way to
+tell `compliant`/`needs_more_context` are dead ends for your mapping, and
+will reach for them anyway meaning "no issue" — every such pick then gets
+silently skipped on your side rather than guessed at, costing a round-trip.
+`--decisions` persists for the database until a later import passes a
+different list.
 
 ## The review TUI
 

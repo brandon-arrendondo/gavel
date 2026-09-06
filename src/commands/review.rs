@@ -20,13 +20,23 @@ use crate::error::{system, CliResult};
 
 type Tui = Terminal<CrosstermBackend<Stdout>>;
 
-const DECISION_KEYS: &[(char, &str)] = &[
-    ('1', "compliant"),
-    ('2', "violation"),
-    ('3', "false_positive"),
-    ('4', "needs_more_context"),
-    ('5', "uncertain"),
-];
+/// Build the numbered decision keys `review` offers: `1..N` assigned, in
+/// order, to whatever `db::get_allowed_decisions` returns, or to the full
+/// `db::DECISIONS` vocabulary if no import ever narrowed it. Keeping this
+/// dynamic (rather than a fixed 5-key const) is what keeps a reviewer from
+/// ever being offered a decision that a narrower-vocabulary consumer has no
+/// mapping for — see CLAUDE.md's decision-vocabulary note.
+fn decision_keys(allowed: &Option<Vec<String>>) -> Vec<(char, String)> {
+    let decisions: Vec<&str> = match allowed {
+        Some(d) => d.iter().map(String::as_str).collect(),
+        None => db::DECISIONS.to_vec(),
+    };
+    decisions
+        .into_iter()
+        .enumerate()
+        .map(|(i, d)| ((b'1' + i as u8) as char, d.to_string()))
+        .collect()
+}
 
 #[derive(Clone, PartialEq)]
 enum Mode {
@@ -47,6 +57,7 @@ struct App {
     comments: Vec<LineComment>,
     reviewer: Option<String>,
     should_quit: bool,
+    decision_keys: Vec<(char, String)>,
 }
 
 /// Resolve `file_path` to an absolute, symlink-resolved path suitable for
@@ -107,6 +118,8 @@ pub fn run(db_path: &Path, id: Option<&str>, reviewer: Option<&str>) -> CliResul
         .map(|s| s.to_string())
         .or_else(|| env::var("USER").ok());
 
+    let allowed = db::get_allowed_decisions(&conn)?;
+
     let mut app = App {
         items,
         idx: 0,
@@ -119,6 +132,7 @@ pub fn run(db_path: &Path, id: Option<&str>, reviewer: Option<&str>) -> CliResul
         comments: Vec::new(),
         reviewer,
         should_quit: false,
+        decision_keys: decision_keys(&allowed),
     };
     load_comments(&conn, &mut app)?;
     ensure_in_review(&conn, &mut app)?;
@@ -248,8 +262,8 @@ fn handle_normal_key(conn: &Connection, app: &mut App, code: KeyCode) -> CliResu
             }
         }
         KeyCode::Char(c) => {
-            if let Some((_, decision)) = DECISION_KEYS.iter().find(|(k, _)| *k == c) {
-                app.mode = Mode::Rationale(decision.to_string());
+            if let Some((_, decision)) = app.decision_keys.iter().find(|(k, _)| *k == c) {
+                app.mode = Mode::Rationale(decision.clone());
                 app.input.clear();
             }
         }
@@ -474,7 +488,8 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
 
     // Help / status bar
     let help = if app.message.is_empty() {
-        let decisions: String = DECISION_KEYS
+        let decisions: String = app
+            .decision_keys
             .iter()
             .map(|(k, d)| format!("{k} {d}"))
             .collect::<Vec<_>>()

@@ -39,7 +39,9 @@ fn dispatch(cli: Cli) -> CliResult<()> {
 fn run_command(cmd: Command, db_path: &std::path::Path, json: bool) -> CliResult<()> {
     match cmd {
         Command::Init { .. } => unreachable!("Init handled upstream"),
-        Command::Import { file } => commands::import::run(db_path, json, &file),
+        Command::Import { file, decisions } => {
+            commands::import::run(db_path, json, &file, decisions.as_deref())
+        }
         Command::List { status } => commands::list::run(db_path, json, status.as_deref()),
         Command::Show { id } => commands::show::run(db_path, json, &id),
         Command::Review { id, reviewer } => {

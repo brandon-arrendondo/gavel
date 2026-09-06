@@ -7,9 +7,21 @@ use crate::db::{self, ReviewItem};
 use crate::error::{user, CliResult};
 use crate::model::ImportItem;
 
-pub fn run(db_path: &Path, json_out: bool, file: &Path) -> CliResult<()> {
+pub fn run(db_path: &Path, json_out: bool, file: &Path, decisions: Option<&str>) -> CliResult<()> {
     let conn = db::open(db_path)?;
     db::require_initialized(&conn)?;
+
+    // Validate and persist before touching review_items, so a bad --decisions
+    // value fails the whole import rather than leaving items imported against
+    // a vocabulary restriction that never got set.
+    let allowed_decisions = match decisions {
+        Some(raw) => {
+            let parsed = db::parse_allowed_decisions(raw)?;
+            db::set_allowed_decisions(&conn, &parsed)?;
+            Some(parsed)
+        }
+        None => None,
+    };
 
     let content = fs::read_to_string(file)
         .map_err(|e| user(format!("cannot read {}: {e}", file.display())))?;
@@ -37,10 +49,14 @@ pub fn run(db_path: &Path, json_out: bool, file: &Path) -> CliResult<()> {
     if json_out {
         println!(
             "{}",
-            serde_json::to_string(&json!({"imported": n})).unwrap()
+            serde_json::to_string(&json!({"imported": n, "allowed_decisions": allowed_decisions}))
+                .unwrap()
         );
     } else {
         println!("imported {n} review item(s)");
+        if let Some(d) = &allowed_decisions {
+            println!("review decisions restricted to: {}", d.join(", "));
+        }
     }
     Ok(())
 }

@@ -49,6 +49,16 @@ pub enum Command {
     Import {
         /// Path to the JSON (array) or JSONL (one object per line) input file.
         file: PathBuf,
+
+        /// Restrict the decisions `gavel review` offers to this comma-separated
+        /// subset, e.g. "violation,false_positive,uncertain". Values must come
+        /// from the full vocabulary: compliant, violation, false_positive,
+        /// needs_more_context, uncertain. The TUI's numbered decision keys are
+        /// assigned 1..N in the order given here. Persists for the whole
+        /// database until a later import passes a different list — omit to
+        /// leave (or keep) the full 5-value vocabulary offered.
+        #[arg(long, value_name = "LIST")]
+        decisions: Option<String>,
     },
 
     /// List review items.

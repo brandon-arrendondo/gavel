@@ -91,6 +91,21 @@ and `needs_more_context` exist for workflows that distinguish "reviewed and
 found fine" from "reviewer needs more information," which not every
 consumer's own vocabulary needs to carry.
 
+That gap is a real trap in practice, though: a reviewer looking at the TUI
+has no way to tell that `compliant` or `needs_more_context` is a dead end for
+the consumer that will eventually read the export, and it's easy to reach for
+"this looks fine to me" (`compliant`) when the consumer actually wanted
+`false_positive` for that meaning. `gavel import --decisions <LIST>` closes
+that gap: it narrows the decisions `gavel review` offers to a comma-separated
+subset (e.g. `--decisions violation,false_positive,uncertain`), persisted in
+`meta.allowed_decisions` for the whole database until a later import passes a
+different list. The TUI's numbered decision keys are then assigned `1..N` in
+the order given, so a value that isn't in the list is never offered as a
+button at all — see `review::decision_keys` in `src/commands/review.rs`. This
+is enforced only at the TUI/import layer: `verdicts.decision`'s `CHECK`
+constraint still accepts any of the five values regardless, so it has no
+schema-version implications.
+
 ## Id resolution
 
 `db::resolve_one` accepts either a full uuid or an unambiguous prefix

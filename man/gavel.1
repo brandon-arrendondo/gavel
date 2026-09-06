@@ -1,4 +1,4 @@
-.TH GAVEL 1 "2026-08-29" "gavel 0.1.0" "User Commands"
+.TH GAVEL 1 "2026-09-06" "gavel 0.2.0" "User Commands"
 .SH NAME
 gavel \- human review workstation for AI-flagged CERT-C findings
 .SH SYNOPSIS
@@ -30,7 +30,7 @@ in the target directory (cwd by default, or
 .B \-\-dir
 .IR PATH ).
 .TP
-.B import \fIFILE\fR
+.B import \fIFILE\fR \fR[\fB\-\-decisions\fR \fILIST\fR]
 Import review items from a JSON array or JSONL file (one object per line).
 Each object has the shape:
 .IR "{external_id?, title, rule_id, rule_text?, language, file_path?, start_line, code, context?}" .
@@ -45,7 +45,19 @@ surviving a review session. It is not used for
 resolution \(em that's what the internal uuid (or its prefix) is for.
 Every imported item starts with status
 .IR pending .
-Prints the count imported.
+.B \-\-decisions
+restricts the decisions
+.B review
+offers to a comma-separated subset of the five-value vocabulary (e.g.
+.IR violation,false_positive,uncertain ),
+in the order given \(em
+.B review\(cq\&s
+numbered decision keys are assigned
+.I 1..N
+in that order, so a value not in the list is never offered as a button.
+Persists for the whole database until a later import passes a different
+list; omit to leave (or keep) the full vocabulary offered. Prints the
+count imported.
 .TP
 .B list \fR[\fB\-\-status\fR \fISTATUS\fR]
 List review items as a table: short id, rule id, title, status.
@@ -112,20 +124,27 @@ to save,
 .B Esc
 to cancel.
 .TP
+.B 1..N
+Set verdict, one key per decision currently offered. With the full
+vocabulary (the default, no
+.B \-\-decisions
+given on import):
 .B 1
-Set verdict: compliant.
-.TP
+compliant,
 .B 2
-Set verdict: violation.
-.TP
+violation,
 .B 3
-Set verdict: false_positive.
-.TP
+false_positive,
 .B 4
-Set verdict: needs_more_context.
-.TP
+needs_more_context,
 .B 5
-Set verdict: uncertain.
+uncertain. If the importing
+.B gavel import \-\-decisions
+call narrowed the vocabulary, only that subset is offered, keyed
+.I 1..N
+in the order given at import \(em see
+.B VERDICT DECISIONS
+below.
 .PP
 After pressing a verdict key, type an optional rationale/notes,
 .B Enter
@@ -163,6 +182,13 @@ Opened in the TUI at least once but not yet adjudicated.
 A verdict has been recorded.
 .SH VERDICT DECISIONS
 .B compliant, violation, false_positive, needs_more_context, uncertain.
+.B review
+offers all five unless a
+.B gavel import \-\-decisions \fILIST\fR
+call narrowed the set for this database (persists until a later import
+passes a different list) \(em see
+.B import
+above.
 .SH DATABASE RESOLUTION
 .IP 1. 4
 The

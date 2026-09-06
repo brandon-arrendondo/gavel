@@ -86,6 +86,18 @@ pub struct Verdict {
 
 pub const STATUSES: &[&str] = &["pending", "in_review", "adjudicated"];
 
+/// The full decision vocabulary, in gavel's canonical order. `verdicts.decision`'s
+/// CHECK constraint (above) is the source of truth this must stay in sync with.
+pub const DECISIONS: &[&str] = &[
+    "compliant",
+    "violation",
+    "false_positive",
+    "needs_more_context",
+    "uncertain",
+];
+
+const ALLOWED_DECISIONS_META_KEY: &str = "allowed_decisions";
+
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
@@ -387,6 +399,67 @@ pub fn count_by_status(conn: &Connection) -> CliResult<Vec<(String, i64)>> {
         out.push(r.map_err(|e| system(format!("row read failed: {e}")))?);
     }
     Ok(out)
+}
+
+pub fn get_meta(conn: &Connection, key: &str) -> CliResult<Option<String>> {
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+        r.get(0)
+    })
+    .optional()
+    .map_err(|e| system(format!("meta read failed: {e}")))
+}
+
+pub fn set_meta(conn: &Connection, key: &str, value: &str) -> CliResult<()> {
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?1, ?2) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| system(format!("meta write failed: {e}")))?;
+    Ok(())
+}
+
+/// Parse and validate a `--decisions` flag value (comma-separated, e.g.
+/// `"violation,false_positive,uncertain"`) against `DECISIONS`. Order is
+/// preserved as given — `review`'s TUI assigns numbered keys 1..N in this
+/// order, so the caller controls which key maps to which decision. Rejects
+/// unknown values and an empty list.
+pub fn parse_allowed_decisions(raw: &str) -> CliResult<Vec<String>> {
+    let mut out: Vec<String> = Vec::new();
+    for part in raw.split(',') {
+        let d = part.trim();
+        if d.is_empty() {
+            continue;
+        }
+        if !DECISIONS.contains(&d) {
+            return Err(user(format!(
+                "unknown decision '{d}' in --decisions; must be one of: {}",
+                DECISIONS.join(", ")
+            )));
+        }
+        if !out.iter().any(|existing| existing == d) {
+            out.push(d.to_string());
+        }
+    }
+    if out.is_empty() {
+        return Err(user("--decisions must name at least one decision"));
+    }
+    Ok(out)
+}
+
+/// The decision subset `review`'s TUI should offer, or `None` for the full
+/// vocabulary (the default when no import has ever set one).
+pub fn get_allowed_decisions(conn: &Connection) -> CliResult<Option<Vec<String>>> {
+    let raw = get_meta(conn, ALLOWED_DECISIONS_META_KEY)?;
+    Ok(raw.map(|s| s.split(',').map(str::to_string).collect()))
+}
+
+/// Persist the decision subset `review` should offer from now on, until a
+/// later import overwrites it. Does not affect items already adjudicated
+/// under a wider vocabulary — `verdicts.decision` still accepts any of
+/// `DECISIONS` regardless of this setting.
+pub fn set_allowed_decisions(conn: &Connection, decisions: &[String]) -> CliResult<()> {
+    set_meta(conn, ALLOWED_DECISIONS_META_KEY, &decisions.join(","))
 }
 
 pub fn count_by_decision(conn: &Connection) -> CliResult<Vec<(String, i64)>> {

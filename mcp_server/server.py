@@ -37,7 +37,9 @@ def _run(*args: str) -> str:
 
 
 @mcp.tool()
-def import_items(items: list[dict[str, Any]]) -> str:
+def import_items(
+    items: list[dict[str, Any]], decisions: list[str] | None = None
+) -> str:
     """Import a batch of review items. Returns a confirmation JSON string.
 
     Each item has the shape:
@@ -60,6 +62,17 @@ def import_items(items: list[dict[str, Any]]) -> str:
     Every imported item starts with status "pending". Items are passed as a
     Python list of dicts (this function serializes them to JSON itself) —
     there's no need to hand-write a JSONL file for programmatic callers.
+
+    decisions: optional subset of gavel's five-value decision vocabulary
+    (compliant, violation, false_positive, needs_more_context, uncertain) to
+    restrict what the review TUI offers, e.g.
+    ["violation", "false_positive", "uncertain"]. Pass this whenever your own
+    verdict mapping is narrower than all five — otherwise a reviewer has no
+    way to tell that a value like "compliant" has nowhere to go on your side,
+    and will pick it anyway meaning "no issue found." The TUI's numbered
+    decision keys are assigned 1..N in the order given here. Persists for
+    the whole database until a later import passes a different list; omit
+    to leave (or keep) the full vocabulary offered.
     """
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
@@ -67,7 +80,10 @@ def import_items(items: list[dict[str, Any]]) -> str:
         json.dump(items, f)
         path = f.name
     try:
-        out = _run("import", "--json", path)
+        args = ["import", "--json", path]
+        if decisions:
+            args += ["--decisions", ",".join(decisions)]
+        out = _run(*args)
     finally:
         os.unlink(path)
     return out
